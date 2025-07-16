@@ -85,33 +85,47 @@ class OpenSourceCrew:
     def _create_llm(self):
         """Create and configure the LLM instance."""
         try:
-            # Try using LiteLLM with proper provider format
-            from litellm import completion
+            # Try using LangChain Google Generative AI first
+            from langchain_google_genai import ChatGoogleGenerativeAI
             
-            # Create a wrapper function that uses LiteLLM
-            def llm_wrapper(prompt, **kwargs):
-                response = completion(
-                    model="gemini/gemini-pro",
-                    messages=[{"role": "user", "content": prompt}],
-                    api_key=self.gemini_api_key or os.getenv("GOOGLE_API_KEY"),
-                    temperature=0.7,
-                    max_tokens=4000
-                )
-                return response.choices[0].message.content
+            api_key = self.gemini_api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                raise ValueError("No Gemini API key found in environment variables or provided directly.")
             
-            return llm_wrapper
+            return ChatGoogleGenerativeAI(
+                model="gemini-pro",
+                temperature=0.7,
+                google_api_key=api_key,
+                max_tokens=4000
+            )
             
         except ImportError:
-            # Fallback to direct Google API
+            # Fallback to LiteLLM with proper configuration
             try:
-                from langchain_google_genai import ChatGoogleGenerativeAI
-                return ChatGoogleGenerativeAI(
-                    model="gemini-pro",
-                    temperature=0.7,
-                    google_api_key=self.gemini_api_key or os.getenv("GOOGLE_API_KEY")
-                )
+                from litellm import completion
+                
+                api_key = self.gemini_api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+                if not api_key:
+                    raise ValueError("No Gemini API key found in environment variables or provided directly.")
+                
+                # Set the environment variable for LiteLLM
+                os.environ["GOOGLE_API_KEY"] = api_key
+                
+                # Create a wrapper function that uses LiteLLM
+                def llm_wrapper(prompt, **kwargs):
+                    response = completion(
+                        model="gemini/gemini-pro",
+                        messages=[{"role": "user", "content": prompt}],
+                        api_key=api_key,
+                        temperature=0.7,
+                        max_tokens=4000
+                    )
+                    return response.choices[0].message.content
+                
+                return llm_wrapper
+                
             except ImportError:
-                raise ImportError("Please install either 'litellm' or 'langchain-google-genai' package")
+                raise ImportError("Please install either 'langchain-google-genai' or 'litellm' package")
 
     def run(self):
         """Sets up and runs the crew with retry logic."""
@@ -121,11 +135,12 @@ class OpenSourceCrew:
         # Create LLM instance
         llm = self._create_llm()
 
-        # Define Agents - let CrewAI handle the LLM configuration
+        # Define Agents with explicit LLM configuration
         requirement_analyst = Agent(
             role=agents_cfg['requirement_analyst']['role'],
             goal=agents_cfg['requirement_analyst']['goal'],
             backstory=agents_cfg['requirement_analyst']['backstory'],
+            llm=llm,  # Explicitly pass the LLM
             verbose=True
         )
         
@@ -134,8 +149,10 @@ class OpenSourceCrew:
             goal=agents_cfg['open_source_researcher']['goal'],
             backstory=agents_cfg['open_source_researcher']['backstory'],
             tools=[github_search_tool],
+            llm=llm,  # Explicitly pass the LLM
             verbose=True
         )
+        
         # Define Tasks
         analyze_task = Task(
             description=tasks_cfg['analyze_requirements']['description'].format(business_requirement=self.business_requirement),
