@@ -5,7 +5,3 @@ analyze_requirements:
 research_projects:
   description: "Based on the analyzed requirements, search GitHub for suitable open-source projects. For each project found, gather information on its features, community, activity, and license."
   expected_output: "A list of 10 potential open-source projects, each with a summary of its relevance to the requirements, its GitHub URL, and key statistics (stars, forks, last commit)."
-
-evaluate_projects:
-  description: "Evaluate the list of researched projects. For each project, assess its suitability against the original business requirement. Provide a detailed report on the pros and cons of each, and recommend the best fit."
-  expected_output: "A final report detailing the evaluation of each project, with a clear recommendation for the most suitable one and a justification for the choice."

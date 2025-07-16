@@ -6,7 +6,6 @@ sys.modules["sqlite3.dbapi2"] = sys.modules["pysqlite3.dbapi2"]
 import streamlit as st
 from src.open_source.crew import OpenSourceCrew
 
-# --- Page Configuration ---
 st.set_page_config(
     page_title="AI Open Source Researcher",
     page_icon="🌌",
@@ -14,7 +13,6 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
-# --- Custom CSS for a new, sophisticated dark UI ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
@@ -58,13 +56,29 @@ st.markdown("""
         color: #e6edf3;
         border: 1px solid #30363d;
         border-radius: 12px;
-        min-height: 250px;
+        min-height: 200px;
         font-size: 16px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         transition: all 0.3s ease;
         font-family: 'Inter', sans-serif;
     }
     .stTextArea textarea:focus {
+        border-color: #58a6ff;
+        box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.3);
+    }
+
+    /* --- Text Input --- */
+    .stTextInput input {
+        background-color: #161b22;
+        color: #e6edf3;
+        border: 1px solid #30363d;
+        border-radius: 12px;
+        font-size: 16px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        transition: all 0.3s ease;
+        font-family: 'Inter', sans-serif;
+    }
+    .stTextInput input:focus {
         border-color: #58a6ff;
         box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.3);
     }
@@ -122,30 +136,68 @@ st.markdown("""
         line-height: 1.6;
     }
 
+    /* --- Warning Box --- */
+    .warning-box {
+        background-color: #1f2937;
+        border: 1px solid #f59e0b;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 20px;
+        color: #f59e0b;
+        font-size: 14px;
+    }
+
 </style>
 """, unsafe_allow_html=True)
 
-
-# --- UI Layout ---
-
-# Header
 st.markdown('<p class="header">🌌 AI Open Source Researcher</p>', unsafe_allow_html=True)
 st.markdown('<p class="subheader">Describe your vision. Our AI agents will navigate the digital cosmos to find your project\'s perfect match.</p>', unsafe_allow_html=True)
-
-# Main Content Area
 col1, col2 = st.columns([2, 1.2], gap="large")
 
 with col1:
+    st.markdown("### 🔑 API Configuration")
+    gemini_api_key = st.text_input(
+        "Gemini API Key",
+        type="password",
+        placeholder="Enter your Gemini API key here...",
+        help="Get your API key from Google AI Studio: https://makersuite.google.com/app/apikey"
+    )
+    
+    if not gemini_api_key:
+        st.markdown(
+            """
+            <div class="warning-box">
+                ⚠️ Please enter your Gemini API key to use the AI agents. You can get it from 
+                <a href="https://makersuite.google.com/app/apikey" target="_blank" style="color: #58a6ff;">Google AI Studio</a>.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
     st.markdown("### ✨ Your Project Blueprint")
     business_requirement = st.text_area(
         "Label is collapsed",
         label_visibility="collapsed",
-        placeholder="Example: I need a self-hostable, lightweight CRM system with a modern UI, a good API for integrations, and built with Python/Django."
+        placeholder="Example: I need a self-hostable, lightweight CRM system with a modern UI, a good API for integrations, and built with Python/Django.",
+        height=200
     )
     research_button = st.button("🚀 Launch Agents")
 
 
 with col2:
+    st.markdown(
+        """
+        <div class="card">
+        <h4>🔧 Setup Requirements</h4>
+        <ul>
+            <li><strong>Gemini API Key:</strong> Required for AI agent functionality</li>
+            <li><strong>Serper API Key:</strong> Should be set in environment variables for GitHub search</li>
+        </ul>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    
     st.markdown(
         """
         <div class="card">
@@ -173,15 +225,17 @@ with col2:
         unsafe_allow_html=True
     )
 
-
-# --- Logic for Running the Crew ---
 if research_button:
-    if business_requirement:
+    if not gemini_api_key:
+        st.error("🔑 Please enter your Gemini API key to proceed.")
+    elif not business_requirement:
+        st.warning("📝 Please provide a project blueprint before launching the agents.")
+    else:
         st.markdown("---")
         
         try:
             with st.spinner("🌌 Agents are deploying... Navigating the open-source universe..."):
-                crew = OpenSourceCrew(business_requirement)
+                crew = OpenSourceCrew(business_requirement, gemini_api_key)
                 result = crew.run()
 
             st.balloons()
@@ -189,7 +243,5 @@ if research_button:
             st.markdown(f'<div class="results-box">{result}</div>', unsafe_allow_html=True)
 
         except Exception as e:
-            st.error(f"An error occurred during the mission: {e}")
-
-    else:
-        st.warning("Please provide a project blueprint before launching the agents.")
+            st.error(f"❌ An error occurred during the mission: {e}")
+            st.info("💡 Make sure your Gemini API key is valid and you have sufficient quota.")

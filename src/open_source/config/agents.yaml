@@ -11,9 +11,3 @@ open_source_researcher:
   tools:
     - "Github Search"
   allow_delegation: true
-
-evaluator:
-  role: "Evaluator Agent"
-  goal: "Evaluate the researched open-source projects against the initial requirements, providing a detailed analysis and a final recommendation."
-  backstory: "A meticulous and unbiased evaluator with a deep understanding of software quality, project viability, and risk assessment."
-  allow_delegation: false
