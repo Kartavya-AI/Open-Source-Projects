@@ -164,20 +164,6 @@ charting capabilities, and MIT license for a commercial project.
 - **Graceful Degradation**: Informative error messages for users
 - **Validation**: Input validation and sanitization
 
-## 🎨 UI Features
-
-### Modern Dark Theme
-- GitHub-inspired color scheme
-- Glassmorphism card designs
-- Smooth animations and transitions
-- Responsive layout
-
-### Interactive Elements
-- Real-time search progress indicators
-- Success animations (balloons)
-- Formatted results display
-- Copy-friendly code blocks
-
 ## 🔍 API Integration
 
 ### Serper API
@@ -190,7 +176,7 @@ charting capabilities, and MIT license for a commercial project.
 - **Framework**: Multi-agent orchestration
 - **Process**: Sequential task execution
 - **Tools**: Custom GitHub search tool
-- **LLM**: OpenAI GPT models
+- **LLM**: Gemini 2.0 Flash models
 
 ## 📊 Output Format
 
@@ -216,7 +202,7 @@ The system provides structured recommendations including:
 - **CrewAI**: Multi-agent framework
 - **Streamlit**: Web interface framework
 - **Serper API**: Search functionality
-- **OpenAI**: Language model capabilities
+- **Google Gemini**: Language model capabilities
 
 ## 📞 Support
 
