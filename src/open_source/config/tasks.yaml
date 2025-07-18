@@ -1,7 +1,11 @@
 analyze_requirements:
-  description: "Analyze the user's business requirement: '{business_requirement}'. Extract key features, technologies, and criteria for the ideal open-source project. Create a detailed summary of these requirements."
-  expected_output: "A structured summary of the project requirements, including key features, suggested technologies, and evaluation criteria."
+  description: "Analyze the user's business requirement: '{business_requirement}'. Extract key features, technologies, and criteria for the ideal open-source project. Create a detailed summary of these requirements including must-have features, nice-to-have features, preferred technologies, licensing requirements, and evaluation criteria."
+  expected_output: "A structured summary of the project requirements, including key features, suggested technologies, licensing preferences, and evaluation criteria. Format this as a clear breakdown with categories for must-have features, preferred technologies, and success metrics."
 
 research_projects:
-  description: "Based on the analyzed requirements, search GitHub for suitable open-source projects. For each project found, gather information on its features, community, activity, and license."
-  expected_output: "A list of 10 potential open-source projects, each with a summary of its relevance to the requirements, its GitHub URL, and key statistics (stars, forks, last commit)."
+  description: "Based on the analyzed requirements, search GitHub for suitable open-source projects. For each project found, gather comprehensive information including features, community metrics, recent activity, license type, and documentation quality. Focus on finding projects that closely match the specified requirements."
+  expected_output: "A detailed list of 8-10 potential open-source projects. Each project's summary must be formatted exactly as follows, using markdown for bolding:\n**Project Name:** <Name of the project>\n**GitHub URL:** <URL to the GitHub repository>\n**Description:** <A brief description of the project>\n**Key Features:** <List of key features>\n**Community Metrics:** <Stars, Forks, etc.>\n**Last Commit Date:** <Date of the last commit>\n**License Type:** <Project's license>\n**Relevance Score:** <Score out of 10 with justification>"
+
+evaluate_projects:
+  description: "Evaluate and rank the discovered open-source projects based on multiple criteria: alignment with requirements, code quality indicators, community health, maintenance status, documentation quality, and long-term viability. Provide a comprehensive analysis and final recommendation."
+  expected_output: "A ranked list of the top 10 projects with detailed evaluation scores, pros and cons for each project, risk assessment, and a final recommendation with justification. Include specific metrics and reasoning for the ranking."

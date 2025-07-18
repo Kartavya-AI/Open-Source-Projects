@@ -2,7 +2,6 @@ requirement_analyst:
   role: "Requirement Analyst"
   goal: "Analyze user-provided business requirements to extract key functionalities, technologies, and project criteria."
   backstory: "An expert in software development and business analysis, skilled at translating business needs into technical specifications for open-source project research."
-  allow_delegation: false
 
 open_source_researcher:
   role: "Open Source Researcher"
@@ -10,4 +9,8 @@ open_source_researcher:
   backstory: "A seasoned open-source contributor and researcher who knows the ins and outs of GitHub, capable of finding hidden gems and popular projects alike."
   tools:
     - "Github Search"
-  allow_delegation: true
+
+project_evaluator:
+  role: "Project Evaluator"
+  goal: "Evaluate and rank the discovered open-source projects based on quality metrics, community health, maintenance status, and alignment with requirements."
+  backstory: "A senior software architect with deep experience in evaluating open-source projects for production use. Expert at assessing code quality, community engagement, and long-term viability of projects."

@@ -3,203 +3,199 @@ import yaml
 import json
 import requests
 import time
+from typing import Optional, Dict, Any
 from crewai import Agent, Task, Crew, Process
 from crewai.tools import tool
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from langchain_community.chat_models import ChatLiteLLM
 
-# Load environment variables
 from dotenv import load_dotenv
 load_dotenv()
 
-# --- Tool Definition using CrewAI's @tool decorator ---
 @tool("Github Search")
 def github_search_tool(query: str) -> str:
     """
     Searches Github for open-source projects based on a query.
     This tool uses the Serper API to perform a Google search focused on github.com.
-    
-    Args:
-        query (str): The search query for GitHub projects
-        
-    Returns:
-        str: Formatted search results
     """
     api_key = os.getenv("SERPER_API_KEY")
     if not api_key:
-        return "Error: SERPER_API_KEY environment variable not set."
+        return "Error: SERPER_API_KEY environment variable not set. Please set it in your environment variables or .env file."
 
     url = "https://google.serper.dev/search"
-    payload = json.dumps({"q": f"site:github.com {query}", "num": 10})
-    headers = {'X-API-KEY': api_key, 'Content-Type': 'application/json'}
+    payload = json.dumps({
+        "q": f"site:github.com {query}",
+        "num": 10,
+        "gl": "us",
+        "hl": "en"
+    })
+    headers = {
+        'X-API-KEY': api_key,
+        'Content-Type': 'application/json'
+    }
 
     try:
-        response = requests.post(url, headers=headers, data=payload)
+        response = requests.post(url, headers=headers, data=payload, timeout=30)
         response.raise_for_status()
         results = response.json()
         
-        if 'organic' in results:
-            # Formatting the results into a readable string for the agent
+        if 'organic' in results and results['organic']:
             formatted_results = []
-            for item in results['organic']:
+            for idx, item in enumerate(results['organic'], 1):
+                title = item.get('title', 'N/A')
+                link = item.get('link', '#')
+                snippet = item.get('snippet', 'No description available.')
+                
                 formatted_results.append(
-                    f"Title: {item.get('title', 'N/A')}\n"
-                    f"Link: {item.get('link', '#')}\n"
-                    f"Snippet: {item.get('snippet', 'No snippet available.')}\n"
-                    "---"
+                    f"{idx}. **{title}**\n"
+                    f"   URL: {link}\n"
+                    f"   Description: {snippet}\n"
+                    f"   {'=' * 50}"
                 )
-            return "\n".join(formatted_results) if formatted_results else "No relevant GitHub projects found."
-        return "No organic results found."
+            
+            return "\n".join(formatted_results) if formatted_results else "No relevant GitHub projects found for the query."
+        else:
+            return f"No GitHub projects found for query: {query}. Try refining your search terms."
+            
+    except requests.exceptions.Timeout:
+        return "Error: Request timed out. Please try again."
     except requests.exceptions.RequestException as e:
-        return f"Error making request to Serper API: {e}"
+        return f"Error making request to Serper API: {str(e)}"
     except json.JSONDecodeError:
         return "Error: Failed to decode JSON response from Serper API."
+    except Exception as e:
+        return f"Unexpected error during GitHub search: {str(e)}"
 
 
 class OpenSourceCrew:
-    def __init__(self, business_requirement, gemini_api_key=None):
+    def __init__(self, business_requirement: str, gemini_api_key: Optional[str] = None):
         self.business_requirement = business_requirement
         self.gemini_api_key = gemini_api_key
+        self.llm = self._create_llm()
         self._setup_environment()
         self._load_configs()
 
     def _setup_environment(self):
-        """Set up the Gemini API key in environment variables."""
         if self.gemini_api_key:
             os.environ["GOOGLE_API_KEY"] = self.gemini_api_key
-            # Also set it as GEMINI_API_KEY for compatibility
             os.environ["GEMINI_API_KEY"] = self.gemini_api_key
         elif not os.getenv("GOOGLE_API_KEY") and not os.getenv("GEMINI_API_KEY"):
-            raise ValueError("Gemini API key is required. Please provide it either through the UI or environment variables.")
+            raise ValueError("Gemini API key is required. Please provide it through the UI")
 
     def _load_configs(self):
-        """Loads agent and task configurations from YAML files."""
-        dir_path = os.path.dirname(os.path.realpath(__file__))
-        agents_config_path = os.path.join(dir_path, 'config/agents.yaml')
-        tasks_config_path = os.path.join(dir_path, 'config/tasks.yaml')
-
-        with open(agents_config_path, 'r') as f:
-            self.agents_config = yaml.safe_load(f)
-        
-        with open(tasks_config_path, 'r') as f:
-            self.tasks_config = yaml.safe_load(f)
+        try:
+            dir_path = os.path.dirname(os.path.realpath(__file__))
+            agents_config_path = os.path.join(dir_path, 'config/agents.yaml')
+            tasks_config_path = os.path.join(dir_path, 'config/tasks.yaml')
+            with open(agents_config_path, 'r', encoding='utf-8') as f:
+                self.agents_config = yaml.safe_load(f)
+            with open(tasks_config_path, 'r', encoding='utf-8') as f:
+                self.tasks_config = yaml.safe_load(f)
+                
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"Configuration file not found: {e}")
+        except yaml.YAMLError as e:
+            raise ValueError(f"Error parsing YAML configuration: {e}")
 
     def _create_llm(self):
-        """Create and configure the LLM instance."""
         try:
-            # Try using LangChain Google Generative AI first
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            
-            api_key = self.gemini_api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                raise ValueError("No Gemini API key found in environment variables or provided directly.")
-            
-            return ChatGoogleGenerativeAI(
-                model="gemini-pro",
-                temperature=0.7,
-                google_api_key=api_key,
-                max_tokens=4000
+            return ChatLiteLLM(
+                model="gemini/gemini-1.5-pro-latest",
+                temparature=0.1
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to initialize Gemini AI via LiteLLM: {str(e)}")
+
+    def _execute_crew(self, crew: Crew) -> str:
+        """Execute the crew with retry logic."""
+        try:
+            result = crew.kickoff()
+            return str(result)
+        except Exception as e:
+            error_msg = str(e).lower()
+            if any(keyword in error_msg for keyword in ['overloaded', 'unavailable', '503', 'rate limit', 'quota', 'resource_exhausted']):
+                print(f"Service temporarily unavailable: {e}")
+                raise e
+            elif any(keyword in error_msg for keyword in ['api key', 'authentication', 'permission', 'forbidden']):
+                raise ValueError(f"Authentication error: Please check your Gemini API key. Error: {e}")
+            else:
+                raise e
+
+    def run(self) -> str:
+        """Sets up and runs the crew with all three agents."""
+        try:
+            agents_cfg = self.agents_config
+            tasks_cfg = self.tasks_config
+
+            # Create LLM instance
+            llm = self._create_llm()
+
+            # Define Agents with explicit LLM configuration
+            requirement_analyst = Agent(
+                role=agents_cfg['requirement_analyst']['role'],
+                goal=agents_cfg['requirement_analyst']['goal'],
+                backstory=agents_cfg['requirement_analyst']['backstory'],
+                llm=llm,
+                verbose=True
             )
             
-        except ImportError:
-            # Fallback to LiteLLM with proper configuration
-            try:
-                from litellm import completion
-                
-                api_key = self.gemini_api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-                if not api_key:
-                    raise ValueError("No Gemini API key found in environment variables or provided directly.")
-                
-                # Set the environment variable for LiteLLM
-                os.environ["GOOGLE_API_KEY"] = api_key
-                
-                # Create a wrapper function that uses LiteLLM
-                def llm_wrapper(prompt, **kwargs):
-                    response = completion(
-                        model="gemini/gemini-pro",
-                        messages=[{"role": "user", "content": prompt}],
-                        api_key=api_key,
-                        temperature=0.7,
-                        max_tokens=4000
-                    )
-                    return response.choices[0].message.content
-                
-                return llm_wrapper
-                
-            except ImportError:
-                raise ImportError("Please install either 'langchain-google-genai' or 'litellm' package")
+            open_source_researcher = Agent(
+                role=agents_cfg['open_source_researcher']['role'],
+                goal=agents_cfg['open_source_researcher']['goal'],
+                backstory=agents_cfg['open_source_researcher']['backstory'],
+                tools=[github_search_tool],
+                llm=llm,
+                verbose=True
+            )
+            
+            project_evaluator = Agent(
+                role=agents_cfg['project_evaluator']['role'],
+                goal=agents_cfg['project_evaluator']['goal'],
+                backstory=agents_cfg['project_evaluator']['backstory'],
+                llm=llm,
+                verbose=True
+            )
+            
+            # Define Tasks
+            analyze_task = Task(
+                description=tasks_cfg['analyze_requirements']['description'].format(
+                    business_requirement=self.business_requirement
+                ),
+                expected_output=tasks_cfg['analyze_requirements']['expected_output'],
+                agent=requirement_analyst
+            )
 
-    def run(self):
-        """Sets up and runs the crew with retry logic."""
-        agents_cfg = self.agents_config
-        tasks_cfg = self.tasks_config
+            research_task = Task(
+                description=tasks_cfg['research_projects']['description'],
+                expected_output=tasks_cfg['research_projects']['expected_output'],
+                agent=open_source_researcher,
+                context=[analyze_task]
+            )
+            
+            evaluate_task = Task(
+                description=tasks_cfg['evaluate_projects']['description'],
+                expected_output=tasks_cfg['evaluate_projects']['expected_output'],
+                agent=project_evaluator,
+                context=[analyze_task, research_task]
+            )
 
-        # Create LLM instance
-        llm = self._create_llm()
+            crew = Crew(
+                agents=[requirement_analyst, open_source_researcher, project_evaluator],
+                tasks=[analyze_task, research_task, evaluate_task],
+                process=Process.sequential,
+                verbose=True,
+                memory=False,
+                max_rpm=5
+            )
 
-        # Define Agents with explicit LLM configuration
-        requirement_analyst = Agent(
-            role=agents_cfg['requirement_analyst']['role'],
-            goal=agents_cfg['requirement_analyst']['goal'],
-            backstory=agents_cfg['requirement_analyst']['backstory'],
-            llm=llm,  # Explicitly pass the LLM
-            verbose=True
-        )
-        
-        open_source_researcher = Agent(
-            role=agents_cfg['open_source_researcher']['role'],
-            goal=agents_cfg['open_source_researcher']['goal'],
-            backstory=agents_cfg['open_source_researcher']['backstory'],
-            tools=[github_search_tool],
-            llm=llm,  # Explicitly pass the LLM
-            verbose=True
-        )
-        
-        # Define Tasks
-        analyze_task = Task(
-            description=tasks_cfg['analyze_requirements']['description'].format(business_requirement=self.business_requirement),
-            expected_output=tasks_cfg['analyze_requirements']['expected_output'],
-            agent=requirement_analyst
-        )
+            result = self._execute_crew(crew)
+            return result
 
-        research_task = Task(
-            description=tasks_cfg['research_projects']['description'],
-            expected_output=tasks_cfg['research_projects']['expected_output'],
-            agent=open_source_researcher,
-            context=[analyze_task]
-        )
-
-        # Create and run the crew with retry logic
-        crew = Crew(
-            agents=[requirement_analyst, open_source_researcher],
-            tasks=[analyze_task, research_task],
-            process=Process.sequential,
-            verbose=True
-        )
-
-        # Retry logic for handling model overload
-        max_retries = 3
-        retry_delay = 30  # seconds
-        
-        for attempt in range(max_retries):
-            try:
-                print(f"Attempt {attempt + 1}/{max_retries}")
-                result = crew.kickoff()
-                return result
-            except Exception as e:
-                error_msg = str(e)
-                if ("overloaded" in error_msg.lower() or 
-                    "unavailable" in error_msg.lower() or 
-                    "503" in error_msg or
-                    "rate limit" in error_msg.lower() or
-                    "quota" in error_msg.lower()):
-                    if attempt < max_retries - 1:
-                        print(f"Model overloaded or rate limited. Retrying in {retry_delay} seconds...")
-                        time.sleep(retry_delay)
-                        retry_delay *= 2  # Exponential backoff
-                    else:
-                        print("Max retries reached. Model still overloaded or rate limited.")
-                        raise ValueError(f"Service temporarily unavailable. Please try again later. Error: {error_msg}")
-                elif "api key" in error_msg.lower() or "authentication" in error_msg.lower():
-                    raise ValueError(f"Invalid API key or authentication error. Please check your Gemini API key. Error: {error_msg}")
-                else:
-                    # For other errors, don't retry
-                    raise e
+        except ValueError as e:
+            raise e
+        except Exception as e:
+            error_msg = str(e)
+            if any(keyword in error_msg.lower() for keyword in ['overloaded', 'unavailable', '503', 'rate limit', 'quota']):
+                return f"⚠️ **Service Temporarily Unavailable**\n\nThe Gemini API is currently experiencing high load. Please try again in a few minutes.\n\nError details: {error_msg}"
+            else:
+                return f"❌ **An error occurred during execution**\n\nError: {error_msg}\n\nPlease check your API key and try again."
