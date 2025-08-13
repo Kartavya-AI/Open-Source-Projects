@@ -20,12 +20,12 @@ def github_search_tool(query: str) -> str:
     """
     api_key = os.getenv("SERPER_API_KEY")
     if not api_key:
-        return "Error: SERPER_API_KEY environment variable not set. Please set it in your environment variables or .env file."
+        return "Error: SERPER_API_KEY environment variable not set."
 
     url = "https://google.serper.dev/search"
     payload = json.dumps({
-        "q": f"site:github.com {query}",
-        "num": 10,
+        "q": f"site:github.com {query} stars:>100",  # Added stars filter for better results
+        "num": 8,  # Reduced from 10 for faster response
         "gl": "us",
         "hl": "en"
     })
@@ -35,36 +35,27 @@ def github_search_tool(query: str) -> str:
     }
 
     try:
-        response = requests.post(url, headers=headers, data=payload, timeout=30)
+        response = requests.post(url, headers=headers, data=payload, timeout=15)  # Reduced timeout
         response.raise_for_status()
         results = response.json()
         
         if 'organic' in results and results['organic']:
             formatted_results = []
-            for idx, item in enumerate(results['organic'], 1):
+            for idx, item in enumerate(results['organic'][:6], 1):  # Limit to top 6 results
                 title = item.get('title', 'N/A')
                 link = item.get('link', '#')
                 snippet = item.get('snippet', 'No description available.')
                 
                 formatted_results.append(
-                    f"{idx}. **{title}**\n"
-                    f"   URL: {link}\n"
-                    f"   Description: {snippet}\n"
-                    f"   {'=' * 50}"
+                    f"{idx}. **{title}**\n   URL: {link}\n   Description: {snippet}\n"
                 )
             
-            return "\n".join(formatted_results) if formatted_results else "No relevant GitHub projects found for the query."
+            return "\n".join(formatted_results) if formatted_results else "No relevant GitHub projects found."
         else:
-            return f"No GitHub projects found for query: {query}. Try refining your search terms."
+            return f"No GitHub projects found for query: {query}."
             
-    except requests.exceptions.Timeout:
-        return "Error: Request timed out. Please try again."
-    except requests.exceptions.RequestException as e:
-        return f"Error making request to Serper API: {str(e)}"
-    except json.JSONDecodeError:
-        return "Error: Failed to decode JSON response from Serper API."
     except Exception as e:
-        return f"Unexpected error during GitHub search: {str(e)}"
+        return f"Search error: {str(e)[:100]}..."
 
 
 class OpenSourceCrew:
@@ -80,7 +71,7 @@ class OpenSourceCrew:
             os.environ["GOOGLE_API_KEY"] = self.gemini_api_key
             os.environ["GEMINI_API_KEY"] = self.gemini_api_key
         elif not os.getenv("GOOGLE_API_KEY") and not os.getenv("GEMINI_API_KEY"):
-            raise ValueError("Gemini API key is required. Please provide it through the UI")
+            raise ValueError("Gemini API key is required.")
 
     def _load_configs(self):
         try:
@@ -100,43 +91,42 @@ class OpenSourceCrew:
     def _create_llm(self):
         try:
             return ChatLiteLLM(
-                model="gemini/gemini-1.5-pro-latest",
-                temparature=0.1
+                model="gemini/gemini-1.5-flash",  # Changed to Flash for speed
+                temperature=0.1,  # Fixed typo
+                max_tokens=1000  # Limit token usage for faster responses
             )
         except Exception as e:
-            raise ValueError(f"Failed to initialize Gemini AI via LiteLLM: {str(e)}")
+            raise ValueError(f"Failed to initialize Gemini AI: {str(e)}")
 
     def _execute_crew(self, crew: Crew) -> str:
-        """Execute the crew with retry logic."""
+        """Execute the crew with timeout protection."""
         try:
             result = crew.kickoff()
             return str(result)
         except Exception as e:
             error_msg = str(e).lower()
             if any(keyword in error_msg for keyword in ['overloaded', 'unavailable', '503', 'rate limit', 'quota', 'resource_exhausted']):
-                print(f"Service temporarily unavailable: {e}")
                 raise e
             elif any(keyword in error_msg for keyword in ['api key', 'authentication', 'permission', 'forbidden']):
-                raise ValueError(f"Authentication error: Please check your Gemini API key. Error: {e}")
+                raise ValueError(f"Authentication error: Please check your Gemini API key.")
             else:
                 raise e
 
     def run(self) -> str:
-        """Sets up and runs the crew with all three agents."""
+        """Sets up and runs the crew with optimized configuration."""
         try:
             agents_cfg = self.agents_config
             tasks_cfg = self.tasks_config
-
-            # Create LLM instance
             llm = self._create_llm()
 
-            # Define Agents with explicit LLM configuration
+            # Create streamlined agents
             requirement_analyst = Agent(
                 role=agents_cfg['requirement_analyst']['role'],
                 goal=agents_cfg['requirement_analyst']['goal'],
                 backstory=agents_cfg['requirement_analyst']['backstory'],
                 llm=llm,
-                verbose=True
+                verbose=False,  # Reduced verbosity for speed
+                max_execution_time=30  # 30 second timeout
             )
             
             open_source_researcher = Agent(
@@ -145,7 +135,8 @@ class OpenSourceCrew:
                 backstory=agents_cfg['open_source_researcher']['backstory'],
                 tools=[github_search_tool],
                 llm=llm,
-                verbose=True
+                verbose=False,
+                max_execution_time=45  # 45 second timeout
             )
             
             project_evaluator = Agent(
@@ -153,10 +144,11 @@ class OpenSourceCrew:
                 goal=agents_cfg['project_evaluator']['goal'],
                 backstory=agents_cfg['project_evaluator']['backstory'],
                 llm=llm,
-                verbose=True
+                verbose=False,
+                max_execution_time=30  # 30 second timeout
             )
             
-            # Define Tasks
+            # Create optimized tasks
             analyze_task = Task(
                 description=tasks_cfg['analyze_requirements']['description'].format(
                     business_requirement=self.business_requirement
@@ -179,13 +171,15 @@ class OpenSourceCrew:
                 context=[analyze_task, research_task]
             )
 
+            # Optimized crew configuration
             crew = Crew(
                 agents=[requirement_analyst, open_source_researcher, project_evaluator],
                 tasks=[analyze_task, research_task, evaluate_task],
                 process=Process.sequential,
-                verbose=True,
+                verbose=False,  # Reduced verbosity
                 memory=False,
-                max_rpm=5
+                max_rpm=30,  # Increased from 5 to 30
+                max_execution_time=120  # 2 minute total timeout
             )
 
             result = self._execute_crew(crew)
@@ -196,6 +190,6 @@ class OpenSourceCrew:
         except Exception as e:
             error_msg = str(e)
             if any(keyword in error_msg.lower() for keyword in ['overloaded', 'unavailable', '503', 'rate limit', 'quota']):
-                return f"⚠️ **Service Temporarily Unavailable**\n\nThe Gemini API is currently experiencing high load. Please try again in a few minutes.\n\nError details: {error_msg}"
+                return f"⚠️ Service temporarily unavailable. Please try again shortly.\n\nDetails: {error_msg}"
             else:
-                return f"❌ **An error occurred during execution**\n\nError: {error_msg}\n\nPlease check your API key and try again."
+                return f"❌ Execution error: {error_msg}"
