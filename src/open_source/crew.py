@@ -91,7 +91,7 @@ class OpenSourceCrew:
     def _create_llm(self):
         try:
             return ChatLiteLLM(
-                model="gemini/gemini-1.5-flash",  # Changed to Flash for speed
+                model="gemini/gemini-2.5-flash",  # Changed to Flash for speed
                 temperature=0.1,  # Fixed typo
                 max_tokens=1000  # Limit token usage for faster responses
             )
